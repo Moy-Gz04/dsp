@@ -88,17 +88,18 @@ function handleController() {
 
   if (!gameStarted) return;
 
+  // Crear la bala con dirección correcta
   const bullet = new THREE.Mesh(
     new THREE.SphereGeometry(0.05, 16, 16),
     new THREE.MeshStandardMaterial({ color: 0xffff00 })
   );
-  const controllerPosition = new THREE.Vector3();
-controller.getWorldPosition(controllerPosition);
-bullet.position.copy(controllerPosition);
 
-const direction = new THREE.Vector3(0, 0, -1);
-direction.applyQuaternion(controller.quaternion).normalize();
-bullet.userData.velocity = direction.multiplyScalar(0.3);
+  const tempDirMatrix = new THREE.Matrix4().extractRotation(controller.matrixWorld);
+  const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(tempDirMatrix).normalize();
+  const position = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+
+  bullet.position.copy(position);
+  bullet.userData.velocity = direction.multiplyScalar(3); // puedes ajustar la velocidad aquí
 
   scene.add(bullet);
   bullets.push(bullet);

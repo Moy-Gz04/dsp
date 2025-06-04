@@ -92,9 +92,14 @@ function handleController() {
     new THREE.SphereGeometry(0.05, 16, 16),
     new THREE.MeshStandardMaterial({ color: 0xffff00 })
   );
-  bullet.position.copy(controller.position);
-  bullet.quaternion.copy(controller.quaternion);
-  bullet.userData.velocity = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion).multiplyScalar(0.3);
+  const controllerPosition = new THREE.Vector3();
+controller.getWorldPosition(controllerPosition);
+bullet.position.copy(controllerPosition);
+
+const direction = new THREE.Vector3(0, 0, -1);
+direction.applyQuaternion(controller.quaternion).normalize();
+bullet.userData.velocity = direction.multiplyScalar(0.3);
+
   scene.add(bullet);
   bullets.push(bullet);
 }

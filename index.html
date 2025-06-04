@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>VR - Disparos activos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>body { margin: 0; overflow: hidden; background: #000; }</style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.157.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.157.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.6, 3);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
+
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(0, 4, 4);
+scene.add(light);
+
+const spheres = [];
+const bullets = [];
+
+let destrucciones = 0;
+let perdidas = 0;
+let textDestruidos, textPerdidos;
+let gameOver = false;
+let juegoIniciado = false;
+let pantallaInicio = [];
+let intervaloEsferas = null;
+
+function mostrarPantallaInicio() {
+  const loader = new FontLoader();
+  loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', font => {
+    const elementos = [];
+
+    // Fondo negro
+    const fondo = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.5, 2.5),
+      new THREE.MeshBasicMaterial({ color: 0x000000 })
+    );
+    fondo.position.set(0, 1.6, -2);
+    scene.add(fondo);
+    elementos.push(fondo);
+
+    // Borde neón
+    const edges = new THREE.EdgesGeometry(new THREE.PlaneGeometry(3.5, 2.5));
+    const borde = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00ffff }));
+    borde.position.copy(fondo.position);
+    borde.position.z += 0.01;
+    scene.add(borde);
+    elementos.push(borde);
+
+    // Título
+    const tituloGeo = new TextGeometry('Presiona el gatillo para comenzar', {
+      font, size: 0.12, height: 0.01
+    });
+    const titulo = new THREE.Mesh(tituloGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    titulo.position.set(-1.4, 2.3, -1.95);
+    scene.add(titulo);
+    elementos.push(titulo);
+
+    // Instrucciones (una por una)
+    const reglas = [
+      '1. Apunta a las esferas',
+      '2. Dispara con el gatillo',
+      '3. No dejes que suban',
+      '4. Pierdes al dejar escapar 10'
+    ];
+
+    reglas.forEach((linea, i) => {
+      const reglaGeo = new TextGeometry(linea, {
+        font, size: 0.09, height: 0.005
+      });
+      const reglaMesh = new THREE.Mesh(reglaGeo, new THREE.MeshBasicMaterial({ color: 0xaaaaaa }));
+      reglaMesh.position.set(-1.1, 2.1 - (i * 0.25), -1.95);
+      scene.add(reglaMesh);
+      elementos.push(reglaMesh);
+    });
+
+    pantallaInicio = elementos;
+  });
+}
+
+
+const loader = new FontLoader();
+loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', font => {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+  const geo1 = new TextGeometry(`Destruidos: 0`, { font, size: 0.1, height: 0.01 });
+  textDestruidos = new THREE.Mesh(geo1, mat);
+  textDestruidos.position.set(-0.8, 2.2, -3);
+  scene.add(textDestruidos);
+
+  const geo2 = new TextGeometry(`Perdidos: 0`, { font, size: 0.1, height: 0.01 });
+  textPerdidos = new THREE.Mesh(geo2, mat);
+  textPerdidos.position.set(0.4, 2.2, -3);
+  scene.add(textPerdidos);
+
+  // COPYRIGHT 3D
+  const copyrightGeo = new TextGeometry("© 2025 Juan Moises Gomez Aispuro | Todos los derechos reservados.", {
+    font,
+    size: 0.05,
+    height: 0.005
+  });
+
+  const copyrightMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 });
+  const copyrightText = new THREE.Mesh(copyrightGeo, copyrightMat);
+
+  copyrightText.position.set(-1, 0, -2); // más abajo y lejos
+  scene.add(copyrightText);
+});
+
+function updateText() {
+  scene.remove(textDestruidos);
+  scene.remove(textPerdidos);
+  loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', font => {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    const geo1 = new TextGeometry(`Destruidos: ${destrucciones}`, { font, size: 0.1, height: 0.01 });
+    textDestruidos = new THREE.Mesh(geo1, mat);
+    textDestruidos.position.set(-0.8, 2.2, -3);
+    scene.add(textDestruidos);
+
+    const geo2 = new TextGeometry(`Perdidos: ${perdidas}`, { font, size: 0.1, height: 0.01 });
+    textPerdidos = new THREE.Mesh(geo2, mat);
+    textPerdidos.position.set(0.4, 2.2, -3);
+    scene.add(textPerdidos);
+  });
+}
+
+function spawnSphere() {
+  const color = new THREE.Color().setHSL(Math.random(), 1, 0.5);
+
+  const material = new THREE.MeshPhysicalMaterial({
+    color: color,
+    emissive: color.clone().multiplyScalar(0.5),
+    metalness: 0.6,
+    roughness: 0.2,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.05
+  });
+
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.3, 64, 64), material);
+  sphere.castShadow = true;
+  sphere.receiveShadow = true;
+
+  // Dirección frente al jugador
+  const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+
+  // Ángulo aleatorio entre -90° y +90° en radianes
+  const angle = (Math.random() - 0.5) * Math.PI; // -π/2 a +π/2
+
+  // Crear una dirección girada en el plano horizontal
+  const spawnDir = new THREE.Vector3(
+    Math.sin(angle), // x
+    0,
+    -Math.cos(angle) // z
+  ).applyQuaternion(camera.quaternion).normalize();
+
+  const distance = 2.5;
+  const spawnPos = new THREE.Vector3().copy(camera.position).add(spawnDir.multiplyScalar(distance));
+  spawnPos.y -= 1.5;
+
+  sphere.position.copy(spawnPos);
+  sphere.userData.velocity = new THREE.Vector3(0, 0.01, 0);
+  scene.add(sphere);
+  spheres.push(sphere);
+}
+
+const controller = renderer.xr.getController(0);
+controller.addEventListener('selectstart', () => {
+  if (!juegoIniciado) {
+    juegoIniciado = true;
+    pantallaInicio.forEach(obj => scene.remove(obj));
+    intervaloEsferas = setInterval(spawnSphere, 1500);
+  }
+  if (!gameOver) shoot();
+});
+
+// LÁSER ROJO VISUAL
+const laserMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+const laserGeometry = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(0, 0, -1) // dirección hacia adelante
+]);
+const laser = new THREE.Line(laserGeometry, laserMaterial);
+laser.scale.z = 5; // longitud del rayo
+controller.add(laser);
+
+function shoot() {
+  if (!juegoIniciado && !gameOver) {
+    juegoIniciado = true;
+    pantallaInicio.forEach(obj => scene.remove(obj));
+    setInterval(spawnSphere, 1500); // 👈 aquí inicia todo
+  }
+
+  if (!juegoIniciado || gameOver) return;
+
+  const bullet = new THREE.Mesh(
+    new THREE.SphereGeometry(0.05, 16, 16),
+    new THREE.MeshStandardMaterial({ color: 0xffff00 })
+  );
+
+  const tempMatrix = new THREE.Matrix4().identity().extractRotation(controller.matrixWorld);
+  const direction = new THREE.Vector3(0, 0, -1).applyMatrix4(tempMatrix);
+  const position = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+
+  bullet.position.copy(position);
+  bullet.userData.velocity = direction.multiplyScalar(0.3);
+  scene.add(bullet);
+  bullets.push(bullet);
+}
+
+
+const clock = new THREE.Clock();
+mostrarPantallaInicio();
+renderer.setAnimationLoop(() => {
+  const delta = clock.getDelta();
+
+  for (let i = spheres.length - 1; i >= 0; i--) {
+    const s = spheres[i];
+    s.position.addScaledVector(s.userData.velocity, delta * 60);
+    if (s.position.y > 2.5) {
+      scene.remove(s);
+      spheres.splice(i, 1);
+      perdidas++;
+      updateText();
+
+      if (perdidas >= 10 && !gameOver) {
+        gameOver = true;
+        showGameOverScreen(); // <- Aquí llamamos la función que muestra el mensaje y botones
+      }
+    }
+  }// ... (resto de tu loop: balas, colisiones, render)
+
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.position.addScaledVector(b.userData.velocity, delta * 60);
+    if (b.position.length() > 30) {
+      scene.remove(b);
+      bullets.splice(i, 1);
+    }
+  }
+
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    for (let j = spheres.length - 1; j >= 0; j--) {
+      const s = spheres[j];
+      if (b.position.distanceTo(s.position) < 0.25) {
+        explosionEffect(s.position);
+        scene.remove(b);
+        scene.remove(s);
+        bullets.splice(i, 1);
+        spheres.splice(j, 1);
+        destrucciones++;
+        updateText();
+        break;
+      }
+    }
+  }
+
+  renderer.render(scene, camera);
+});
+
+function explosionEffect(pos) {
+  const boom = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true })
+  );
+  boom.position.copy(pos);
+  scene.add(boom);
+
+  let scale = 0.2;
+  let alpha = 1;
+
+  function animateBoom() {
+    scale += 0.05;
+    alpha -= 0.07;
+    boom.scale.set(scale, scale, scale);
+    boom.material.opacity = alpha;
+    if (alpha <= 0) {
+      scene.remove(boom);
+    } else {
+      requestAnimationFrame(animateBoom);
+    }
+  }
+
+  animateBoom();
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+function showGameOverScreen() {
+  const loader = new FontLoader();
+  loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', font => {
+    // PANEL SÓLIDO NEGRO
+    const fondo = new THREE.Mesh(
+      new THREE.PlaneGeometry(3, 2),
+      new THREE.MeshBasicMaterial({ color: 0x000000 })
+      
+    );
+    fondo.position.set(0, 1.6, -2);
+    scene.add(fondo);
+
+    // BORDE NEÓN con EdgesGeometry
+    const edgeGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(3, 2));
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x00ffff });
+    const bordes = new THREE.LineSegments(edgeGeo, edgeMat);
+    bordes.position.copy(fondo.position);
+    bordes.position.z += 0.01; // para que quede por encima
+    scene.add(bordes);
+
+    // TEXTO ROJO GRANDE: ¡Perdiste!
+    const texto1 = new TextGeometry('Perdiste :(', {
+      font,
+      size: 0.2,
+      height: 0.02
+    });
+    const mesh1 = new THREE.Mesh(texto1, new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      emissive: 0xff3333,
+      emissiveIntensity: 1
+    }));
+    mesh1.position.set(-0.6, 1.9, -1.95);
+    scene.add(mesh1);
+
+    // TEXTO BLANCO: Lograste X puntos
+    const texto2 = new TextGeometry(`Lograste ${destrucciones} puntos`, {
+      font,
+      size: 0.12,
+      height: 0.01
+    });
+    const mesh2 = new THREE.Mesh(texto2, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    mesh2.position.set(-0.7, 1.6, -1.95);
+    scene.add(mesh2);
+  });
+}
+
+
+
+</script>
+
+<div id="copyright">© 2025 Juan Moises Gomez Aispuro. Todos los derechos reservados.</div>
+<style>
+  #copyright {
+    position: absolute;
+    bottom: 5px;
+    width: 100%;
+    text-align: center;
+    color: white;
+    font-size: 0.8em;
+    opacity: 0.5;
+    font-family: sans-serif;
+    z-index: 10;
+    user-select: none;
+  }
+</style>
+
+</body>
+</html>
